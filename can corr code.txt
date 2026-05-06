@@ -1,0 +1,119 @@
+%Find Sigificance for Canonical Correlation in Matlab
+%------------------
+% X: n x p matrix (neural variables)
+% Y: n x q matrix (behavioral variables)
+
+nPerm = 10000;  % Number of permutations
+[n, p] = size(X);
+[~, q] = size(Y);
+
+% Compute observed canonical correlations
+[~,~,r_obs] = canoncorr(X, Y);
+
+% Preallocate for null distribution
+r_perm = zeros(nPerm, min(p, q));
+
+% Run permutations
+for i = 1:nPerm
+    Y_perm = Y(randperm(n), :);  % Shuffle rows of Y
+    try
+        [~,~,r_perm(i,:)] = canoncorr(X, Y_perm);
+    catch
+        r_perm(i,:) = NaN;  % Handle rare failures
+    end
+end
+
+% Compute empirical p-values (proportion of permutations >= observed)
+pVals = mean(r_perm >= r_obs, 1, 'omitnan');
+
+% Display results
+disp('Observed Canonical Correlations:');
+disp(r_obs);
+disp('Empirical p-values from permutation test:');
+disp(pVals);
+
+
+% Use MATLAB's built-in FDR correction (Benjamini-Hochberg)
+pFDR = mafdr(pVals, 'BHFDR', true);
+
+% Display results
+disp('FDR-corrected p-values (Benjamini-Hochberg):');
+disp(pFDR);
+
+
+
+%Visualize Can Corr
+%------------------------------------
+
+% Assuming you've already run:
+% [A,B,r,U,V] = canoncorr(X,Y);
+
+figure;
+scatter(U(:,1), V(:,1), 60, 'filled')
+xlabel('Canonical Variable 1 (U₁)', 'FontSize', 12);
+ylabel('Canonical Variable 1 (V₁)', 'FontSize', 12);
+title('Canonical Correlation: First Canonical Variables', 'FontSize', 14);
+grid on;
+
+%Determine contributions of individual PCs
+%------------------------------------------------------------
+
+% Run CCA
+[A,B,r,U,V] = canoncorr(X,Y);
+
+% Compute structure coefficients
+structCoeffX = corr(X, U);  % Neural PCs with canonical variates
+structCoeffY = corr(Y, V);  % Behavioral PCs with canonical variates
+
+% Parameters
+n = size(X,1);      % number of observations
+alpha = 0.05;       % significance level
+
+% Function to compute p-values from Pearson r
+compute_p = @(r) 2 * (1 - tcdf(abs(r .* sqrt((n - 2)./(1 - r.^2))), n - 2));
+
+% Get p-values
+pvalsX = compute_p(structCoeffX);
+pvalsY = compute_p(structCoeffY);
+
+% --- Plot structure coefficients for Neural PCs ---
+figure;
+b1 = bar(structCoeffX);
+xlabel('Neural Principal Components');
+ylabel('Structure Coefficient');
+legend(arrayfun(@(n) sprintf('CanVar %d', n), 1:size(U,2), 'UniformOutput', false), 'Location', 'best');
+title('Neural PC Contributions to Canonical Variates');
+grid on;
+
+% Add significance stars
+hold on;
+for i = 1:size(structCoeffX, 1)
+    for j = 1:size(structCoeffX, 2)
+        if pvalsX(i,j) < alpha
+            x = b1(j).XData(i);
+            y = structCoeffX(i,j);
+            text(x, y + 0.05 * sign(y), '*', 'HorizontalAlignment', 'center', 'FontSize', 14, 'Color', 'r');
+        end
+    end
+end
+
+% --- Plot structure coefficients for Behavioral PCs ---
+figure;
+b2 = bar(structCoeffY);
+xlabel('Behavioral Principal Components');
+ylabel('Structure Coefficient');
+legend(arrayfun(@(n) sprintf('CanVar %d', n), 1:size(V,2), 'UniformOutput', false), 'Location', 'best');
+title('Behavioral PC Contributions to Canonical Variates');
+grid on;
+
+% Add significance stars
+hold on;
+for i = 1:size(structCoeffY, 1)
+    for j = 1:size(structCoeffY, 2)
+        if pvalsY(i,j) < alpha
+            x = b2(j).XData(i);
+            y = structCoeffY(i,j);
+            text(x, y + 0.05 * sign(y), '*', 'HorizontalAlignment', 'center', 'FontSize', 14, 'Color', 'r');
+        end
+    end
+end
